@@ -1,0 +1,8 @@
+# Large trial ensembles written by the pipeline (rebuilt by pipeline/run_all.jl; several hundred MB)
+/data/intermediate/
+# Smoke-test and scratch output
+/tmp/
+*.jls
+*.log
+.DS_Store
+.claude/

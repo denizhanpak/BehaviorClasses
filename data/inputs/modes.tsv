@@ -1,0 +1,41 @@
+A	A	latched	middle
+B	B	symmetric	middle
+C	C	latched	middle
+D	D	symmetric	middle
+E	E	latched	middle
+F	F	symmetric	edge
+G	G	symmetric	edge
+H	H	symmetric	edge
+I	I	symmetric	edge
+pattern #16	#16	latched	middle
+pattern #18	#18	symmetric	middle
+pattern #20	#20	latched	middle
+pattern #22	#22	latched	middle
+pattern #28	#28	latched	middle
+pattern #30	#30	latched	middle
+pattern #42	N	symmetric	edge
+pattern #58	P	latched	edge
+pattern #67	#67	latched	middle
+pattern #70	J	symmetric	first
+pattern #75	#75	latched	middle
+pattern #83	#83	latched	middle
+pattern #91	#91	latched	middle
+pattern #93	O	symmetric	edge
+pattern #102	K	latched	first
+pattern #107	#107	latched	middle
+pattern #110	#110	latched	first
+pattern #123	#123	latched	middle
+free start 3	f3	latched	middle
+free start 4	L	latched	middle
+free start 6	M	latched	middle
+free start 8	f8	latched	middle
+free start 10	f10	symmetric	middle
+free start 11	f11	latched	middle
+free start 12	f12	latched	middle
+free start 13	f13	symmetric	first
+free start 15	f15	symmetric	middle
+free start 18	f18	latched	middle
+free start 21	Q	latched	first
+free start 24	f24	latched	middle
+free start 26	f26	latched	middle
+free start 30	f30	latched	middle
