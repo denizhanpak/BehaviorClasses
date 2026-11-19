@@ -36,8 +36,10 @@ Figures, saved to `Figures/` as PNG and PDF:
 1. `Oscillator1`: the flow and the limit cycle of each model, the AP Oscillator's in its plane ``(x, v)`` and the Walker's in its three-dimensional state space ``(\phi, \omega, o)`` (top), and the asymptotic phase and the isochrons around each cycle (bottom).
 2. `Oscillator2`: each model's limb over time, with its period and amplitude; amplitude against each model's amplitude parameter; the Walker's period over its neuron's time constant and its body's gains; and period against each model's period parameter.
 3. `Oscillator3`: which phases a noisy reading of the Walker's leg angle, its neuron or both leaves open (top), and the transfer entropy between the Walker's leg and its neuron over the cycle (bottom).
+4. `Oscillator4`: what the Walker's leg angle and its neuron state tell about the limit-cycle phase a lag later, split into what either tells, what one alone tells and what only the two together tell (top), and the small parts enlarged (bottom).
+5. `Oscillator5`: the integrated information decomposition of the Walker's neuron state and leg angle over the cycle, the sixteen parts of its lattice.
 
-Each section computes what it shows and then draws it panel by panel, each `panel_…` cell below the text that describes it. The `figure_…` cells at the bottom of the notebook lay the panels out into the three figures, letter the panels A, B, … and save them; the text above each panel begins with its figure and letter (1A, 1B, …). The settings of a panel worth changing (starting states, ranges, the camera) are named at the top of its cell.
+Each section computes what it shows and then draws it panel by panel, each `panel_…` cell below the text that describes it. The `figure_…` cells at the bottom of the notebook lay the panels out into the figures, letter the panels A, B, … and save them; the text above each panel begins with its figure and letter (1A, 1B, …). The settings of a panel worth changing (starting states, ranges, the camera) are named at the top of its cell.
 
 Blue is the AP Oscillator and orange the Walker throughout (in figure 3, dark brown is the Walker's neuron as a source of transfer entropy). The phase colour scale is the isochrons' (dark at ``\theta = 0``, light at ``\pm\pi``) wherever it appears.
 
@@ -1219,6 +1221,286 @@ panel_transfer_entropy = let lin = cycle_linearization, te = transfer
     plot!(p, xs, broken(te.neuron_to_leg); color=SWING_BROWN, linewidth=2.5, label="neuron → leg")
 end
 
+# ╔═╡ 52d47a18-928a-52e6-977b-59c3a3a0b32c
+md"""
+**What the leg angle and the neuron tell about the limit-cycle phase.** The transfer entropy above follows the states of the leg and the neuron. The phase of the limit cycle is one number, the asymptotic phase ``\Theta`` of §1, a function of the whole state. Near the cycle a deviation ``\delta x`` of ``(y, \phi, \omega, d)`` moves it by
+```math
+\delta\Theta = z(\theta) \cdot \delta x ,
+```
+with ``z`` the gradient of the asymptotic phase on the cycle (`phase_gradient`). Without noise a state's phase advances at the cycle's rate whatever the state, so the propagators of `cycle_linearization` carry ``z`` back along the cycle, ``z_j = \Phi_j^{\top} z_{j+1}``, from the vector that one turn of the cycle gives back unchanged, scaled so that ``z \cdot \dot x = 2\pi/T``. The cell below it checks ``z`` against runs from nudged states.
+
+For the noisy Walkers of 3D (the same noise, the same lag ``\Delta``, seen a time ``s`` after their last step), take what the leg angle ``\phi`` and the neuron state ``y`` at time ``t`` tell about the phase a lag later, ``I(\Theta_{t+\Delta};\, \phi_t, y_t)``. The phase is taken a lag later because its present value is an exact function of the present state; over the lag the noise moves it. The angular velocity ``\omega`` and the distance ``d`` are not among the sources and are not conditioned on. This information is split in four (the partial information decomposition of Williams and Beer 2010), with the redundancy the smaller of the two single informations (the minimum mutual information of Barrett 2015):
+
+- **redundant**, what either one tells: ``\min\{I(\Theta_{t+\Delta}; \phi_t),\, I(\Theta_{t+\Delta}; y_t)\}``;
+- **angle only** and **neuron only**, what one tells beyond the redundant part (with this redundancy one of the two is nil at every phase);
+- **integrated**, what only the two together tell: ``I(\Theta_{t+\Delta}; \phi_t, y_t) - \max\{I(\Theta_{t+\Delta}; \phi_t),\, I(\Theta_{t+\Delta}; y_t)\}``.
+
+Like the transfer entropies, these are closed forms of the Gaussian deviations (`gaussian_cmi`), in the small-noise limit: they describe Walkers close to the cycle, and cannot show that the leg angle confuses stance with swing, which 3A–C show.
+"""
+
+# ╔═╡ 24500ad0-1c5c-5f1f-bbb1-a02c5274a784
+"""
+The gradient z of the Walker's asymptotic phase at each grid time of `cycle_linearization`, for the
+deviation (y, φ, ω, d): the left eigenvector of one turn of the cycle with multiplier 1, scaled so
+that z ⋅ ẋ = 2π/T, carried back along the cycle by the propagators, zⱼ = Φⱼᵀ zⱼ₊₁.
+"""
+phase_gradient = let lin = cycle_linearization
+    turn = foldl((A, Φ) -> Φ * A, lin.Φ; init=Matrix(1.0I, 4, 4))   # one turn of the cycle, from the first grid time
+    e = eigen(Matrix(turn'))
+    z = real.(e.vectors[:, argmin(abs.(e.values .- 1))])
+    z .*= 2π / cycles.rpg.period / (z ⋅ lin.v[1])
+    Z = Vector{Vector{Float64}}(undef, lin.n)
+    Z[end] = lin.Φ[end]' * z
+    for j in lin.n-1:-1:1
+        Z[j] = lin.Φ[j]' * Z[j+1]
+    end
+    Z
+end
+
+# ╔═╡ 817d092a-5075-54e7-bfbe-f5169c58b584
+# `phase_gradient` checked: z ⋅ ẋ in units of 2π/T at every grid time (1 everywhere), and its largest relative
+# difference, at six grid times, from the phase shifts of runs from nudged states (read off their last step in six periods).
+let lin = cycle_linearization, Z = phase_gradient, T = cycles.rpg.period, tol = (reltol=1e-11, abstol=1e-13), δ = 1e-5
+    s = ((1:lin.n) .- 0.5) .* lin.Δt
+    X, ref = cycle_states(s)
+    last_step(j, i, δ) = step_times(mode_at(ref, s[j]), setindex(X[j], X[j][i] + δ, i), 6T; tol...)[1][end]
+    from_runs(j) = [-2π / T * (last_step(j, i, δ) - last_step(j, i, -δ)) / 2δ for i in 1:4]
+    (rate=round.(extrema(Z[j] ⋅ lin.v[j] * T / 2π for j in 1:lin.n); digits=6),
+        against_runs=round(maximum(norm(Z[j] - from_runs(j)) / norm(Z[j]) for j in (1, 100, 256, 340, 400, 512)); sigdigits=2))
+end
+
+# ╔═╡ d4c811c6-ede7-5eec-9072-442861b329aa
+"""
+    phase_information_parts(lin, fl, Z, lag)
+
+What the leg angle φ and the neuron state y tell about the asymptotic phase `lag` time steps later, in
+bits at each grid phase of `lin`, for the fluctuations `fl` and the phase gradient `Z`: the information
+of the whole state (`full`), of the two together (`pair`) and of each (`angle`, `neuron`), and the
+parts of `pair` by minimum mutual information: `redundant`, `angle_only`, `neuron_only`, `integrated`.
+"""
+function phase_information_parts(lin, fl, Z, lag)
+    n = lin.n
+    info = (full=zeros(n), pair=zeros(n), angle=zeros(n), neuron=zeros(n))
+    Threads.@threads for j in 1:n
+        R = zeros(4, 4)
+        for i in mod1.(j .+ (0:lag-1), n)   # the noise gathered over the lag
+            R = lin.Φ[i] * R * lin.Φ[i]' + fl.Q[i]
+        end
+        z = Z[mod1(j + lag, n)]
+        # y, φ, ω, d at t (1–4) and the phase at t + Δ (5): the phase at t, moved by the noise of the lag
+        W = [Matrix(1.0I, 4, 4) zeros(4); Z[j]' 1.0]
+        S = W * [fl.C[j] zeros(4); zeros(4)' z' * R * z] * W'
+        info.full[j] = gaussian_cmi(S, [5], [1, 2, 3, 4], Int[])
+        info.pair[j] = gaussian_cmi(S, [5], [1, 2], Int[])
+        info.angle[j] = gaussian_cmi(S, [5], [2], Int[])
+        info.neuron[j] = gaussian_cmi(S, [5], [1], Int[])
+    end
+    redundant = min.(info.angle, info.neuron)
+    (; info..., redundant, angle_only=info.angle .- redundant, neuron_only=info.neuron .- redundant,
+        integrated=info.pair .- max.(info.angle, info.neuron))
+end
+
+# ╔═╡ 77d70363-26b4-54ce-bbb9-2eb9f7f1b304
+"""The parts of the Walker's phase information under `PROCESS_NOISE`, at the lag of the transfer entropy."""
+phase_parts = let lin = cycle_linearization
+    phase_information_parts(lin, walker_fluctuations(lin, PROCESS_NOISE), phase_gradient, round(Int, transfer.Δ / lin.Δt))
+end
+
+# ╔═╡ 0cc7341a-fc16-59fd-a37e-625606663aa6
+# Each quantity's mean in stance and in swing and its peak, and the integrated part's peak at other noise ratios and lags.
+let lin = cycle_linearization, p = phase_parts, lag = round(Int, transfer.Δ / lin.Δt)
+    stance = lin.θ .< lin.raise
+    average(v, sel) = round(sum(v[sel]) / count(sel); digits=2)
+    peak(v) = (bits=round(maximum(v); digits=2), θ=round(lin.θ[argmax(v)]; digits=2))
+    integrated(noise, lag) = peak(phase_information_parts(lin, walker_fluctuations(lin, noise), phase_gradient, lag).integrated)
+    (quantities=[(quantity=k, stance=average(p[k], stance), swing=average(p[k], .!stance), peak=peak(p[k])) for k in keys(p)],
+        integrated_by_neuron_noise=[(neuron=r, peak=integrated((neuron=r, leg=1.0), lag)) for r in (0.25, 1.0, 4.0)],
+        integrated_by_lag=[(Δ=round(l * lin.Δt; digits=2), peak=integrated(PROCESS_NOISE, l)) for l in (lag ÷ 4, lag, 4lag)])
+end
+
+# ╔═╡ bf676518-1139-536e-87e9-81bc793d357c
+begin
+    """Colours of the parts of an information decomposition: redundant, neuron only, angle only, integrated (synergistic)."""
+    PART_COLORS = (redundant=COLORS.blue, neuron=SWING_BROWN, angle=MODEL_COLORS.rpg, integrated=COLORS.aqua)
+
+    """The grid phases of `lin` with a quarter cycle of the other end past each end, broken at the step (as in 3D)."""
+    wrapped_phase(lin; margin=π / 4) = [lin.θ[lin.θ.>2π-margin] .- 2π; NaN; lin.θ; NaN; lin.θ[lin.θ.<margin] .+ 2π]
+
+    """`v`, one value per grid phase of `lin`, laid out as `wrapped_phase`."""
+    wrapped(lin, v; margin=π / 4) = [v[lin.θ.>2π-margin]; NaN; v; NaN; v[lin.θ.<margin]]
+
+    """
+        cycle_panel(lin; margin = π/4, ticks, kwargs...)
+
+    An empty panel over the walking cycle, the phase counted from the step, with swing shaded and the
+    steps dotted, as 3D's; `kwargs` go to `plot`.
+    """
+    function cycle_panel(lin; margin=π / 4, ticks=([0, π / 2, π, lin.raise, 2π], ["step", "π/2", "π", "raise", "step"]), kwargs...)
+        p = plot(; xlims=(-margin, 2π + margin), xticks=ticks, kwargs...)
+        vspan!(p, [lin.raise - 2π, 0.0]; color=INK_MUTED, alpha=0.12, linewidth=0, label="")
+        vspan!(p, [lin.raise, 2π]; color=INK_MUTED, alpha=0.12, linewidth=0, label="")
+        vline!(p, [0.0, 2π]; color=INK_MUTED, linestyle=:dot, linewidth=1, label="")
+    end
+end
+
+# ╔═╡ dc973ca1-6332-576b-90ad-9dafe0981a44
+md"""
+**4A. What tells the limit-cycle phase.** For the Walker at each phase ``\theta``, the information about the limit-cycle phase a lag later held by the whole state (dotted) and by the leg angle and the neuron state together (dashed), and the four parts of the latter; swing shaded, a quarter cycle past each end, as in 3D.
+
+- **Redundant.** Most of what the pair tells, either one tells: about 1.8 bits on average in stance and 2.6 in swing. It is nil just after the step and again at the leg's backward turn (``\theta \approx 4.7``), where neither the angle (0.04 bit) nor the neuron (nil) tells the phase.
+- **The pair against the whole state.** The angle and the neuron together tell less than the whole state: 2.0 against 2.8 bits on average in stance, 3.0 against 4.7 in swing. The rest is held by the angular velocity and the distance ``d``.
+- **Angle only** is the next largest part: about 0.2 bit through most of the cycle, with peaks late in stance (1.7 bits at ``\theta \approx 3.3``) and before the step (1.2 bits at ``\theta \approx 5.9``).
+- **Neuron only** and **integrated** are too small to see on this scale; 4B enlarges them.
+"""
+
+# ╔═╡ 1e6a33e1-3d9d-54fc-b870-e90424228e91
+"""4A: what the whole state, the leg angle and the neuron together, and each part of their information tell about the limit-cycle phase a lag later, over the cycle; swing shaded."""
+panel_phase_parts = let lin = cycle_linearization, p = phase_parts, x = wrapped_phase(cycle_linearization)
+    plt = cycle_panel(lin; ylabel="information about the phase (bits)", ylims=(0, 1.05 * maximum(p.full)),
+        title="What tells the limit-cycle phase a lag later, Δ = $(round(transfer.Δ; digits=2))", legend=:outertop, legend_column=3)
+    plot!(plt, x, wrapped(lin, p.full); color=INK_MUTED, linewidth=1.5, linestyle=:dot, label="whole state (y, φ, ω, d)")
+    plot!(plt, x, wrapped(lin, p.pair); color=INK, linewidth=1.5, linestyle=:dash, label="angle and neuron together")
+    plot!(plt, x, wrapped(lin, p.redundant); color=PART_COLORS.redundant, linewidth=2.5, label="redundant")
+    plot!(plt, x, wrapped(lin, p.angle_only); color=PART_COLORS.angle, linewidth=2.5, label="angle only")
+    plot!(plt, x, wrapped(lin, p.neuron_only); color=PART_COLORS.neuron, linewidth=2.5, label="neuron only")
+    plot!(plt, x, wrapped(lin, p.integrated); color=PART_COLORS.integrated, linewidth=2.5, label="integrated")
+end
+
+# ╔═╡ acfc425a-2d52-5ab4-b2fd-bc91c312c334
+md"""
+**4B. What the neuron adds.** The three small parts of 4A on a scale of one bit (the angle's peaks run off it).
+
+- **Neuron only** appears only around the raise and the backward turn: at most 0.25 bit just after the raise (``\theta \approx 4.2``) and 0.15 bit before the turn (``\theta \approx 4.6``). Elsewhere the angle tells whatever the neuron tells.
+- **Integrated** has two peaks. It is 0.51 bit at the raise and 0.88 bit just after it (``\theta \approx 4.2``), and 0.49 bit at the backward turn (``\theta \approx 4.7``), where it is nearly all of the pair's 0.54 bit. It is at most 0.02 bit through stance up to ``\theta \approx 3.8`` and in swing from ``\theta \approx 5.3``.
+
+So near the cycle the neuron adds to what the leg angle tells about the phase only across the raise and the leg's backward turn; through the rest of the cycle it repeats part of what the angle tells. The sizes depend on the noise and on the lag (the summary cell above). The integrated peak is 2.0 bits, at the backward turn, with the neuron's noise a quarter of the leg's, and 0.32 bit, just after the raise, with four times the leg's. It is 1.1 bits at a quarter of the lag and 0.65 bit at four times the lag, both just after the raise.
+"""
+
+# ╔═╡ 03a8338e-9f7d-52af-983a-9ed3e656131d
+"""4B: the parts of 4A other than the redundant one, up to `top` bits."""
+panel_phase_parts_detail = let lin = cycle_linearization, p = phase_parts, x = wrapped_phase(cycle_linearization), top = 1.0
+    plt = cycle_panel(lin; xlabel="phase θ from the step (rad)", ylabel="information about the phase (bits)", ylims=(0, top),
+        title="The same, enlarged", legend=:outertop, legend_column=3)
+    plot!(plt, x, wrapped(lin, p.angle_only); color=PART_COLORS.angle, linewidth=2.5, label="angle only")
+    plot!(plt, x, wrapped(lin, p.neuron_only); color=PART_COLORS.neuron, linewidth=2.5, label="neuron only")
+    plot!(plt, x, wrapped(lin, p.integrated); color=PART_COLORS.integrated, linewidth=2.5, label="integrated")
+end
+
+# ╔═╡ 52616d44-a875-5c6a-9971-5969047ba24a
+md"""
+**How the leg angle and the neuron carry their information forward.** The integrated information decomposition (Mediano et al. 2021) takes the information that the two variables at time ``t`` hold about the two a lag later,
+```math
+I\bigl(y_{t+\Delta}, \phi_{t+\Delta};\, y_t, \phi_t\bigr),
+```
+and splits it by how it is held at each of the two times: redundantly (by either variable), by the neuron only, by the angle only, or synergistically (only by the two together). Four ways at ``t`` times four at ``t + \Delta`` give sixteen parts, the lattice of the decomposition: the angle-only part at ``t`` that is neuron-only at ``t + \Delta`` is what passes from the angle to the neuron, the redundant part that stays redundant is what both keep, and so on. There is no separate target here: this is about the two variables' own future, not about the phase.
+
+The sources and the targets are the neuron state ``y`` and the leg angle ``\phi`` alone; the angular velocity ``\omega`` and the distance ``d`` are left out and not conditioned on. The Walkers, the noise and the lag are 3D's. The redundancies are again minimum mutual informations: of two sources about a target the smaller of their informations, and the double redundancy (redundant at both times) the smallest of the four informations between one variable at ``t`` and one at ``t + \Delta``; the other parts follow from the mutual informations among the four variables (`information_lattice`). With this redundancy a part can come out negative.
+"""
+
+# ╔═╡ b81e2f4a-c3dd-598c-8cd1-426a739075f6
+begin
+    """The ways two variables hold information, in the order of the rows (at t) and columns (at t + Δ) of the lattice."""
+    LATTICE_PARTS = ("redundant", "neuron only", "angle only", "synergistic")
+
+    """
+        information_lattice(lin, fl, lag)
+
+    The integrated information decomposition (Mediano et al. 2021) of the neuron state y and the leg angle φ
+    at each grid phase of `lin`, at a lag of `lag` time steps, for the fluctuations `fl`: `atoms[r, c]`, in
+    bits, is the information held at t in the way r and at t + Δ in the way c (`LATTICE_PARTS`), and `total`
+    is their sum, I(y, φ at t + Δ; y, φ at t). Redundancies by minimum mutual information.
+    """
+    function information_lattice(lin, fl, lag)
+        n = lin.n
+        atoms = [zeros(n) for _ in 1:4, _ in 1:4]
+        total = zeros(n)
+        Threads.@threads for j in 1:n
+            P, R = Matrix(1.0I, 4, 4), zeros(4, 4)
+            for i in mod1.(j .+ (0:lag-1), n)   # carry the deviation and the noise on by the lag
+                P = lin.Φ[i] * P
+                R = lin.Φ[i] * R * lin.Φ[i]' + fl.Q[i]
+            end
+            W = [I zeros(4, 4); P I]
+            S = (W*[fl.C[j] zeros(4, 4); zeros(4, 4) R]*W')[[1, 2, 5, 6], [1, 2, 5, 6]]   # y, φ at t (1, 2) and at t + Δ (3, 4)
+            info(now, later) = gaussian_cmi(S, later, now, Int[])
+            # between the neuron (N), the angle (A) or both (NA) at t and the neuron (n), the angle (a) or both (na) at t + Δ
+            Nn, Na, An, Aa = info([1], [3]), info([1], [4]), info([2], [3]), info([2], [4])
+            NAn, NAa, Nna, Ana, NAna = info([1, 2], [3]), info([1, 2], [4]), info([1], [3, 4]), info([2], [3, 4]), info([1, 2], [3, 4])
+            a = zeros(4, 4)                                          # rows: at t; columns: at t + Δ
+            a[1, 1] = min(Nn, Na, An, Aa)                            # the double redundancy
+            a[1, 2] = min(Nn, An) - a[1, 1]                          # the sources' redundancy about the neuron, the angle, both
+            a[1, 3] = min(Na, Aa) - a[1, 1]
+            a[1, 4] = min(Nna, Ana) - sum(a[1, 1:3])
+            a[2, 1] = min(Nn, Na) - a[1, 1]                          # the targets' redundancy about the neuron, the angle, both
+            a[3, 1] = min(An, Aa) - a[1, 1]
+            a[4, 1] = min(NAn, NAa) - sum(a[1:3, 1])
+            a[2, 2] = Nn - a[1, 1] - a[1, 2] - a[2, 1]               # one variable at t with one at t + Δ
+            a[2, 3] = Na - a[1, 1] - a[1, 3] - a[2, 1]
+            a[3, 2] = An - a[1, 1] - a[1, 2] - a[3, 1]
+            a[3, 3] = Aa - a[1, 1] - a[1, 3] - a[3, 1]
+            a[2, 4] = Nna - sum(a[1, :]) - sum(a[2, 1:3])            # one variable at t with both at t + Δ
+            a[3, 4] = Ana - sum(a[1, :]) - sum(a[3, 1:3])
+            a[4, 2] = NAn - sum(a[1:3, 1]) - sum(a[1:3, 2]) - a[4, 1]   # both at t with one variable at t + Δ
+            a[4, 3] = NAa - sum(a[1:3, 1]) - sum(a[1:3, 3]) - a[4, 1]
+            a[4, 4] = NAna - sum(a)                                  # the rest: synergistic at both times
+            for r in 1:4, c in 1:4
+                atoms[r, c][j] = a[r, c]
+            end
+            total[j] = NAna
+        end
+        (; atoms, total)
+    end
+end
+
+# ╔═╡ 26c67071-b25e-5533-911b-77f0a90e85ae
+"""The integrated information decomposition of the Walker's neuron state and leg angle under `PROCESS_NOISE`, at the lag of the transfer entropy."""
+lattice = let lin = cycle_linearization
+    information_lattice(lin, walker_fluctuations(lin, PROCESS_NOISE), round(Int, transfer.Δ / lin.Δt))
+end
+
+# ╔═╡ 189a31f2-4a65-50d9-9eae-6abc0ea93cbe
+# Each part's mean in stance and in swing, its smallest value and its peak; and the total.
+let lin = cycle_linearization, stance = cycle_linearization.θ .< cycle_linearization.raise
+    average(v, sel) = round(sum(v[sel]) / count(sel); digits=2)
+    peak(v) = (bits=round(maximum(v); digits=2), θ=round(lin.θ[argmax(v)]; digits=2))
+    row(name, v) = (part=name, stance=average(v, stance), swing=average(v, .!stance), least=round(minimum(v); digits=2), peak=peak(v))
+    [[row(LATTICE_PARTS[r] * " → " * LATTICE_PARTS[c], lattice.atoms[r, c]) for r in 1:4 for c in 1:4]; row("total", lattice.total)]
+end
+
+# ╔═╡ b2051ffd-7a1f-536d-9d06-2ea9f7676df6
+md"""
+**5. The lattice.** Each panel is one part, in bits over the cycle: the row is how the information is held at ``t``, the column how it is held at ``t + \Delta``; swing shaded. Every panel has its own scale, and its largest value (in size) is written in it.
+
+- **Redundant → redundant** is most of the total: about 2.3 bits on average in stance and 2.5 in swing, of 3.2 and 3.6. It is nil just after the step (up to ``\theta \approx 0.25``) and at the leg's backward turn.
+- **The angle's row** comes next. Angle only → redundant is about 0.4 bit in stance and 0.3 in swing; angle only → angle only is about 0.3 bit in stance, fading toward the raise. Angle only → neuron only, what passes from the angle to the neuron, appears only ahead of the transitions: 0.78 bit before the step and 0.37 bit before the raise.
+- **The neuron's row** is empty: none of its parts reaches 0.05 bit in size. The neuron state holds nothing about the pair's future that the angle does not hold too.
+- **The synergistic row** is active only around the transitions and the backward turn: synergistic → redundant is 0.76 bit just after the raise and 0.5 bit at the backward turn; synergistic → angle only is 0.58 bit just after the raise and 0.87 bit just before the step; synergistic → synergistic is at most 0.25 bit, before the step.
+- **Before the step** (``\theta > 6.03``) the Walker steps within the lag, and the parts there are narrow peaks: the largest is redundant → neuron only, 5.6 bits.
+
+Some parts are negative, down to −0.25 bit (synergistic → neuron only, before the step); this comes with the minimum mutual information redundancy.
+"""
+
+# ╔═╡ a9b103d1-eaea-5e5a-98a1-4a58693ae52c
+"""5: the sixteen parts of `lattice` over the cycle, rows by how the information is held at t and columns by how it is held at t + Δ; each panel on its own scale, with its largest value written in it; swing shaded."""
+panel_lattice = let lin = cycle_linearization, x = wrapped_phase(cycle_linearization)
+    colors = (PART_COLORS.redundant, PART_COLORS.neuron, PART_COLORS.angle, PART_COLORS.integrated)
+    panels = map([(r, c) for c in 1:4, r in 1:4]) do (r, c)   # row by row
+        v = lattice.atoms[r, c]
+        lo, hi = min(0.0, minimum(v)), max(maximum(v), 0.05)
+        pad = 0.08 * (hi - lo)
+        p = cycle_panel(lin; ticks=([0, π, lin.raise, 2π], r == 4 ? ["step", "π", "raise", "step"] : fill("", 4)),
+            ylims=(lo - (lo < 0 ? pad : 0.0), hi + pad), legend=false, tickfontsize=7,
+            title=r == 1 ? "at t + Δ: " * LATTICE_PARTS[c] : "", xlabel=r == 4 ? "phase θ from the step" : "",
+            ylabel=c == 1 ? "at t: " * LATTICE_PARTS[r] * "\n(bits)" : "")
+        hline!(p, [0.0]; color=INK_MUTED, linewidth=0.8)
+        plot!(p, x, wrapped(lin, v); color=colors[r], linewidth=2)
+        annotate!(p, π / 2, hi + 0.3pad, text("largest " * string(round(v[argmax(abs.(v))]; digits=2)), 7, INK_SECONDARY, :center, :top))
+    end
+    plot(panels...; layout=(4, 4), size=(1500, 1050), left_margin=6Plots.mm, bottom_margin=4Plots.mm,
+        plot_title="Integrated information decomposition of the neuron state y and the leg angle φ, lag Δ = $(round(transfer.Δ; digits=2))",
+        plot_titlefontsize=12)
+end
+
 # ╔═╡ 19beb501-ef3e-53ad-a795-92250c561e94
 md"""
 ## Figures
@@ -1293,6 +1575,28 @@ figure_phase_information = let
         left_margin=5Plots.mm, bottom_margin=5Plots.mm)
     save_figure(panel_letters!(plt), "Oscillator3")
 end
+
+# ╔═╡ 58d309cc-ec75-5d5b-9416-50495c7dad69
+md"""
+**Figure 4**, `Oscillator4` (§3): (A) what the Walker's whole state, its leg angle and neuron state together, and each part of the two's information tell about the limit-cycle phase a lag later, over the cycle; (B) the parts other than the redundant one, enlarged.
+"""
+
+# ╔═╡ a986bc11-ff92-51ef-a22c-f8a03fead55e
+"""Figure 4: the information about the limit-cycle phase and its parts (A) and the small parts enlarged (B), lettered and saved to `Figures/`."""
+figure_phase_parts = let
+    plt = plot(panel_phase_parts, panel_phase_parts_detail; layout=grid(2, 1; heights=[0.58, 0.42]), size=(1150, 860),
+        left_margin=5Plots.mm, bottom_margin=5Plots.mm)
+    save_figure(panel_letters!(plt), "Oscillator4")
+end
+
+# ╔═╡ a964de67-1a89-580a-8924-7a2c52ea7365
+md"""
+**Figure 5**, `Oscillator5` (§3): the integrated information decomposition of the Walker's neuron state and leg angle over the cycle, the sixteen parts by how the information is held at ``t`` (rows) and at ``t + \Delta`` (columns).
+"""
+
+# ╔═╡ 276b8456-339a-5a2d-b6d5-bab45d8459d3
+"""Figure 5: the lattice of the integrated information decomposition, saved to `Figures/`."""
+figure_lattice = save_figure(panel_lattice, "Oscillator5")
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -3719,6 +4023,23 @@ uuid = "23338594-aafe-5451-b93e-139f81909106"
 # ╠═8cd368f7-295c-517e-be9e-4c30409778d2
 # ╟─db69588a-fb2f-5cbf-8b8c-d577b21addfd
 # ╠═09771a80-8069-509f-bc09-c5f24c484a00
+# ╟─52d47a18-928a-52e6-977b-59c3a3a0b32c
+# ╠═24500ad0-1c5c-5f1f-bbb1-a02c5274a784
+# ╠═817d092a-5075-54e7-bfbe-f5169c58b584
+# ╠═d4c811c6-ede7-5eec-9072-442861b329aa
+# ╠═77d70363-26b4-54ce-bbb9-2eb9f7f1b304
+# ╠═0cc7341a-fc16-59fd-a37e-625606663aa6
+# ╠═bf676518-1139-536e-87e9-81bc793d357c
+# ╟─dc973ca1-6332-576b-90ad-9dafe0981a44
+# ╠═1e6a33e1-3d9d-54fc-b870-e90424228e91
+# ╟─acfc425a-2d52-5ab4-b2fd-bc91c312c334
+# ╠═03a8338e-9f7d-52af-983a-9ed3e656131d
+# ╟─52616d44-a875-5c6a-9971-5969047ba24a
+# ╠═b81e2f4a-c3dd-598c-8cd1-426a739075f6
+# ╠═26c67071-b25e-5533-911b-77f0a90e85ae
+# ╠═189a31f2-4a65-50d9-9eae-6abc0ea93cbe
+# ╟─b2051ffd-7a1f-536d-9d06-2ea9f7676df6
+# ╠═a9b103d1-eaea-5e5a-98a1-4a58693ae52c
 # ╟─19beb501-ef3e-53ad-a795-92250c561e94
 # ╠═601a995a-5f91-52f1-9400-c072f5980bf0
 # ╟─2bc63fd0-4054-5336-ab30-2d110b81be4d
@@ -3727,5 +4048,9 @@ uuid = "23338594-aafe-5451-b93e-139f81909106"
 # ╠═50995748-0744-5653-8c88-a096b05e337c
 # ╟─ec9da5fb-3436-5244-acde-bc0ff15fc19c
 # ╠═0844edfb-ea0e-5fd2-a5cd-cb21e1cb491e
+# ╟─58d309cc-ec75-5d5b-9416-50495c7dad69
+# ╠═a986bc11-ff92-51ef-a22c-f8a03fead55e
+# ╟─a964de67-1a89-580a-8924-7a2c52ea7365
+# ╠═276b8456-339a-5a2d-b6d5-bab45d8459d3
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

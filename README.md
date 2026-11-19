@@ -6,7 +6,7 @@ a sensorimotor model and a simpler law that describes it:
 | Example | Models | Figures |
 |:--|:--|:--|
 | **Approach** | Braitenberg's vehicle and Fajen & Warren's steering law | `Approach1`, `Approach2` |
-| **Limb oscillation** | Bingham's action–perception oscillator and Beer's one-legged walker | `Oscillator1`–`Oscillator3` |
+| **Limb oscillation** | Bingham's action–perception oscillator and Beer's one-legged walker | `Oscillator1`–`Oscillator5` |
 | **Categorization** | evolved CTRNN agents that catch circles and avoid lines (Beer 2003), and the edge law that describes them | `Categorization1`–`Categorization4` |
 
 plus `Models`, the three models side by side. All figures are in [`figures/`](figures/) as PNG and PDF.
